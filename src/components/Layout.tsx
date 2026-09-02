@@ -6,8 +6,8 @@ import { Outlet } from 'react-router-dom'
 
 export default function Layout() {
   return (
-    <main className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-[#0a0a0b] text-white">
       <Outlet />
-    </main>
+    </div>
   )
 }

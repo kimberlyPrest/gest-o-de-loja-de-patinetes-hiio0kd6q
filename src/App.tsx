@@ -44,8 +44,25 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { useToast } from '@/hooks/use-toast'
 import { Toaster } from '@/components/ui/toaster'
 import {
+  CustomerModal,
+  DealModal,
+  ProductModal,
+  TransactionModal,
+  FollowupModal,
+  AgentSettingsModal,
+} from '@/components/AppModals'
+import { GlobalSearchModal } from '@/components/GlobalSearchModal'
+import { NotificationsDropdown, ProfileModal, ExportReportModal } from '@/components/HeaderExtras'
+import {
   askScooterPro,
   createFollowup,
+  updateFollowup,
+  createCustomer,
+  updateCustomer,
+  createProduct,
+  updateProduct,
+  createDeal,
+  createTransaction,
   listConversations,
   listCustomers,
   listDeals,
@@ -219,13 +236,31 @@ function Shell() {
   const [page, setPage] = useState<Page>('dashboard')
   const [collapsed, setCollapsed] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
-  const [search, setSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+
+  // Modais de Criação / Edição
+  const [dealModalOpen, setDealModalOpen] = useState(false)
+  const [customerModalOpen, setCustomerModalOpen] = useState(false)
+  const [productModalOpen, setProductModalOpen] = useState(false)
+  const [transactionModalOpen, setTransactionModalOpen] = useState(false)
+  const [followupModalOpen, setFollowupModalOpen] = useState(false)
+  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
+
+  // Itens selecionados para edição / gaveta
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null)
+
   const [deals, setDeals] = useState<Deal[]>([]),
     [customers, setCustomers] = useState<Customer[]>([]),
     [products, setProducts] = useState<Product[]>([]),
     [conversations, setConversations] = useState<Conversation[]>([]),
     [transactions, setTransactions] = useState<Transaction[]>([]),
     [followups, setFollowups] = useState<FollowUp[]>([])
+
   const load = useCallback(async () => {
     const [d, c, p, w, t, f] = await Promise.all([
       listDeals(),
@@ -242,16 +277,32 @@ function Shell() {
     setTransactions(t)
     setFollowups(f)
   }, [])
+
   useEffect(() => {
     load().catch(console.error)
   }, [load])
+
   useRealtime<Deal>('deals', load)
   useRealtime<WhatsAppMessage>('whatsapp_messages', load)
   useRealtime<Conversation>('whatsapp_conversations', load)
+
+  // Atalho Command+K ou Ctrl+K para busca global
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const go = (p: Page) => {
     setPage(p)
     setMobileNav(false)
   }
+
   const data = {
     deals,
     setDeals,
@@ -262,20 +313,49 @@ function Shell() {
     followups,
     reload: load,
     go,
+    openNewDeal: () => setDealModalOpen(true),
+    openNewCustomer: () => {
+      setSelectedCustomer(null)
+      setCustomerModalOpen(true)
+    },
+    openEditCustomer: (c: Customer) => {
+      setSelectedCustomer(c)
+      setCustomerModalOpen(true)
+    },
+    openNewProduct: () => {
+      setSelectedProduct(null)
+      setProductModalOpen(true)
+    },
+    openEditProduct: (p: Product) => {
+      setSelectedProduct(p)
+      setProductModalOpen(true)
+    },
+    openNewTransaction: () => setTransactionModalOpen(true),
+    openNewFollowup: () => setFollowupModalOpen(true),
+    openExportReport: () => setExportOpen(true),
+    openAgentSettings: () => setAgentSettingsOpen(true),
+    selectedDeal,
+    setSelectedDeal,
   }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileNav ? 'open' : ''}`}>
         <div className="side-logo">
-          <div className="brand-mark">
+          <div className="brand-mark" style={{ cursor: 'pointer' }} onClick={() => go('dashboard')}>
             <Zap size={18} />
           </div>
-          <div>
+          <div style={{ cursor: 'pointer' }} onClick={() => go('dashboard')}>
             <b>NEW WAY</b>
             <span>MANAGEMENT</span>
           </div>
-          <button onClick={() => setCollapsed(!collapsed)}>
-            <ChevronLeft />
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+          >
+            <ChevronLeft
+              style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: '0.2s' }}
+            />
           </button>
         </div>
         <nav>
@@ -289,7 +369,12 @@ function Shell() {
             </button>
           ))}
         </nav>
-        <div className="store-status">
+        <div
+          className="store-status"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setExportOpen(true)}
+          title="Clique para ver relatório da operação"
+        >
           <div className="status-icon">
             <ShoppingBag />
           </div>
@@ -301,27 +386,55 @@ function Shell() {
           </div>
         </div>
       </aside>
+
       <header>
-        <button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)}>
+        <button
+          className="mobile-menu"
+          onClick={() => setMobileNav(!mobileNav)}
+          aria-label="Abrir menu"
+        >
           <Menu />
         </button>
-        <div className="global-search">
+
+        <div
+          className="global-search"
+          onClick={() => setSearchOpen(true)}
+          style={{ cursor: 'pointer' }}
+        >
           <Search />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            readOnly
             placeholder="Buscar clientes, negócios, produtos..."
+            onClick={() => setSearchOpen(true)}
+            style={{ cursor: 'pointer' }}
           />
           <kbd>
             <Command /> K
           </kbd>
         </div>
+
         <div className="header-actions">
-          <button className="icon-btn">
+          <button
+            className="icon-btn"
+            onClick={() => setNotificationsOpen(!notificationsOpen)}
+            title="Notificações da loja"
+          >
             <Bell />
             <i />
           </button>
-          <div className="profile">
+
+          <NotificationsDropdown
+            open={notificationsOpen}
+            onClose={() => setNotificationsOpen(false)}
+            onNavigate={go}
+          />
+
+          <div
+            className="profile"
+            onClick={() => setProfileOpen(true)}
+            style={{ cursor: 'pointer' }}
+            title="Abrir perfil da administradora"
+          >
             <div className="avatar">KA</div>
             <div>
               <b>Kimberly</b>
@@ -329,21 +442,28 @@ function Shell() {
             </div>
             <ChevronRight />
           </div>
-          <button className="icon-btn logout" onClick={() => pb.authStore.clear()}>
+
+          <button
+            className="icon-btn logout"
+            onClick={() => pb.authStore.clear()}
+            title="Sair do sistema"
+          >
             <LogOut />
           </button>
         </div>
       </header>
+
       <main key={page} className="page-enter">
         {page === 'dashboard' && <Dashboard {...data} />}{' '}
         {page === 'pipeline' && <Pipeline {...data} />}{' '}
         {page === 'whatsapp' && <WhatsApp {...data} />}{' '}
-        {page === 'customers' && <Customers customers={customers} />}{' '}
-        {page === 'inventory' && <Inventory products={products} />}{' '}
-        {page === 'finance' && <Finance transactions={transactions} />}{' '}
-        {page === 'followups' && <FollowUps items={followups} />}{' '}
-        {page === 'assistant' && <Assistant />}
+        {page === 'customers' && <Customers {...data} />}{' '}
+        {page === 'inventory' && <Inventory {...data} />}{' '}
+        {page === 'finance' && <Finance {...data} />}{' '}
+        {page === 'followups' && <FollowUps {...data} />}{' '}
+        {page === 'assistant' && <Assistant {...data} />}
       </main>
+
       <div className="bottom-nav">
         {nav.slice(0, 5).map(([id, label, Icon]) => (
           <button className={page === id ? 'active' : ''} onClick={() => go(id)} key={id}>
@@ -352,7 +472,82 @@ function Shell() {
           </button>
         ))}
       </div>
+
       {mobileNav && <div className="scrim" onClick={() => setMobileNav(false)} />}
+
+      {/* Modais Globais */}
+      <GlobalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        customers={customers}
+        deals={deals}
+        products={products}
+        onNavigate={go}
+        onSelectDeal={(d) => {
+          setSelectedDeal(d)
+          go('pipeline')
+        }}
+        onSelectProduct={(p) => {
+          setSelectedProduct(p)
+          go('inventory')
+        }}
+      />
+
+      <CustomerModal
+        open={customerModalOpen}
+        customer={selectedCustomer}
+        onClose={() => {
+          setCustomerModalOpen(false)
+          setSelectedCustomer(null)
+        }}
+        onSuccess={load}
+      />
+
+      <DealModal
+        open={dealModalOpen}
+        customers={customers}
+        products={products}
+        onClose={() => setDealModalOpen(false)}
+        onSuccess={load}
+      />
+
+      <ProductModal
+        open={productModalOpen}
+        product={selectedProduct}
+        onClose={() => {
+          setProductModalOpen(false)
+          setSelectedProduct(null)
+        }}
+        onSuccess={load}
+      />
+
+      <TransactionModal
+        open={transactionModalOpen}
+        onClose={() => setTransactionModalOpen(false)}
+        onSuccess={load}
+      />
+
+      <FollowupModal
+        open={followupModalOpen}
+        customers={customers}
+        deals={deals}
+        onClose={() => setFollowupModalOpen(false)}
+        onSuccess={load}
+      />
+
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+
+      <ExportReportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        deals={deals}
+        products={products}
+        transactions={transactions}
+        customers={customers}
+      />
+
+      <AgentSettingsModal open={agentSettingsOpen} onClose={() => setAgentSettingsOpen(false)} />
+
       <Toaster />
     </div>
   )
@@ -368,6 +563,17 @@ type Data = {
   followups: FollowUp[]
   reload: () => Promise<void>
   go: (p: Page) => void
+  openNewDeal: () => void
+  openNewCustomer: () => void
+  openEditCustomer: (c: Customer) => void
+  openNewProduct: () => void
+  openEditProduct: (p: Product) => void
+  openNewTransaction: () => void
+  openNewFollowup: () => void
+  openExportReport: () => void
+  openAgentSettings: () => void
+  selectedDeal?: Deal | null
+  setSelectedDeal?: (d: Deal | null) => void
 }
 function PageTitle({
   tag,
@@ -391,7 +597,17 @@ function PageTitle({
     </div>
   )
 }
-function Dashboard({ deals, products, transactions, customers, go }: Data) {
+function Dashboard({
+  deals,
+  products,
+  transactions,
+  customers,
+  go,
+  openExportReport,
+  openNewDeal,
+  openNewCustomer,
+  openNewProduct,
+}: Data) {
   const income = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
     active = deals.filter((d) => !['won', 'lost'].includes(d.stage)).length,
     low = products.filter((p) => p.stock <= 2).length
@@ -403,7 +619,11 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
         title="Bom dia, Kimberly."
         desc="Aqui está o pulso da sua operação hoje."
         action={
-          <button className="outline-btn">
+          <button
+            className="outline-btn"
+            onClick={openExportReport}
+            title="Exportar dados consolidados"
+          >
             <FileText /> Exportar relatório
           </button>
         }
@@ -414,16 +634,30 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
           label="VENDAS NO MÊS"
           value={money.format(income)}
           delta="+18,4%"
+          onClick={() => go('finance')}
         />
-        <Kpi icon={Users} label="LEADS NO PIPELINE" value={String(active)} delta="+3 esta semana" />
+        <Kpi
+          icon={Users}
+          label="LEADS NO PIPELINE"
+          value={String(active)}
+          delta="+3 esta semana"
+          onClick={() => go('pipeline')}
+        />
         <Kpi
           icon={Box}
           label="ALERTA DE ESTOQUE"
           value={`${low} itens`}
           delta="Requer atenção"
           danger
+          onClick={() => go('inventory')}
         />
-        <Kpi icon={TrendingUp} label="CRESCIMENTO" value="+24,8%" delta="vs. mês anterior" />
+        <Kpi
+          icon={TrendingUp}
+          label="CRESCIMENTO"
+          value="+24,8%"
+          delta="vs. mês anterior"
+          onClick={() => go('finance')}
+        />
       </div>
       <div className="dashboard-grid">
         <section className="panel chart-panel">
@@ -432,11 +666,16 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
               <span>RECEITA</span>
               <h3>Performance de vendas</h3>
             </div>
-            <div className="legend">
-              <i /> Últimos 30 dias
+            <div className="legend" style={{ cursor: 'pointer' }} onClick={() => go('finance')}>
+              <i /> Últimos 30 dias (Ver extrato)
             </div>
           </div>
-          <div className="chart">
+          <div
+            className="chart"
+            style={{ cursor: 'pointer' }}
+            onClick={() => go('finance')}
+            title="Clique para abrir detalhes financeiros"
+          >
             <div className="y-axis">
               <span>20k</span>
               <span>15k</span>
@@ -452,9 +691,9 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
               ))}
             </div>
           </div>
-          <div className="chart-foot">
+          <div className="chart-foot" style={{ cursor: 'pointer' }} onClick={() => go('finance')}>
             <b>{money.format(income)}</b>
-            <span>Receita consolidada no período</span>
+            <span>Receita consolidada no período →</span>
           </div>
         </section>
         <section className="panel activity-panel">
@@ -463,7 +702,11 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
               <span>TEMPO REAL</span>
               <h3>Atividade recente</h3>
             </div>
-            <button>
+            <button
+              onClick={() => go('pipeline')}
+              style={{ background: 'none', border: 0, color: '#666', cursor: 'pointer' }}
+              title="Ver todas as atividades no pipeline"
+            >
               <MoreHorizontal />
             </button>
           </div>
@@ -476,6 +719,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
                 </>
               }
               time="há 4 min"
+              onClick={() => go('whatsapp')}
             />
             <Timeline
               icon={BadgeDollarSign}
@@ -486,6 +730,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
               }
               time="há 35 min"
               green
+              onClick={() => go('pipeline')}
             />
             <Timeline
               icon={Bike}
@@ -495,6 +740,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
                 </>
               }
               time="há 1h"
+              onClick={() => go('pipeline')}
             />
             <Timeline
               icon={UserPlus}
@@ -504,6 +750,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
                 </>
               }
               time="há 3h"
+              onClick={() => go('customers')}
             />
           </div>
         </section>
@@ -514,7 +761,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
           <h3>Ações rápidas</h3>
         </div>
         <div>
-          <button onClick={() => go('pipeline')}>
+          <button onClick={openNewDeal}>
             <span>
               <CreditCard />
             </span>
@@ -522,7 +769,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
             <small>Iniciar negociação</small>
             <ChevronRight />
           </button>
-          <button onClick={() => go('customers')}>
+          <button onClick={openNewCustomer}>
             <span>
               <UserPlus />
             </span>
@@ -530,7 +777,7 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
             <small>Novo lead ou cliente</small>
             <ChevronRight />
           </button>
-          <button onClick={() => go('inventory')}>
+          <button onClick={openNewProduct}>
             <span>
               <PackagePlus />
             </span>
@@ -548,6 +795,70 @@ function Dashboard({ deals, products, transactions, customers, go }: Data) {
         </button>
       </div>
     </>
+  )
+}
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  delta,
+  danger,
+  onClick,
+}: {
+  icon: typeof Activity
+  label: string
+  value: string
+  delta: string
+  danger?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <div
+      className={`kpi ${danger ? 'danger' : ''}`}
+      onClick={onClick}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
+    >
+      <div className="kpi-top">
+        <span>
+          <Icon />
+        </span>
+        <i>
+          <TrendingUp /> {delta}
+        </i>
+      </div>
+      <p>{label}</p>
+      <h2>{value}</h2>
+      <div className="kpi-line" />
+    </div>
+  )
+}
+function Timeline({
+  icon: Icon,
+  text,
+  time,
+  green,
+  onClick,
+}: {
+  icon: typeof Activity
+  text: React.ReactNode
+  time: string
+  green?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <div
+      className="timeline-item"
+      onClick={onClick}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
+    >
+      <span className={green ? 'green' : ''}>
+        <Icon />
+      </span>
+      <div>
+        <p>{text}</p>
+        <small>{time}</small>
+      </div>
+    </div>
   )
 }
 function Kpi({
@@ -602,9 +913,15 @@ function Timeline({
     </div>
   )
 }
-function Pipeline({ deals, setDeals, reload }: Data) {
-  const [selected, setSelected] = useState<Deal | null>(null),
-    [drag, setDrag] = useState<string | null>(null)
+function Pipeline({ deals, setDeals, reload, openNewDeal, selectedDeal, setSelectedDeal }: Data) {
+  const [selected, setSelected] = useState<Deal | null>(selectedDeal || null),
+    [drag, setDrag] = useState<string | null>(null),
+    [filterMode, setFilterMode] = useState<'all' | 'mine'>('all')
+
+  useEffect(() => {
+    if (selectedDeal) setSelected(selectedDeal)
+  }, [selectedDeal])
+
   async function move(id: string, stage: Deal['stage']) {
     const old = deals
     setDeals((d) => d.map((x) => (x.id === id ? { ...x, stage } : x)))
@@ -614,22 +931,36 @@ function Pipeline({ deals, setDeals, reload }: Data) {
       setDeals(old)
     }
   }
+
+  const filteredDeals =
+    filterMode === 'mine' ? deals.filter((d) => d.owner === pb.authStore.record?.id) : deals
+
   return (
     <>
       <PageTitle
         tag="CRM · PIPELINE"
         title="Pipeline de vendas"
-        desc={`${deals.filter((d) => !['won', 'lost'].includes(d.stage)).length} oportunidades ativas · ${money.format(deals.reduce((s, d) => s + d.value, 0))} em potencial`}
+        desc={`${filteredDeals.filter((d) => !['won', 'lost'].includes(d.stage)).length} oportunidades ativas · ${money.format(filteredDeals.reduce((s, d) => s + d.value, 0))} em potencial`}
         action={
-          <button className="primary-btn">
+          <button className="primary-btn" onClick={openNewDeal}>
             <Plus /> Novo negócio
           </button>
         }
       />
       <div className="pipeline-toolbar">
         <div>
-          <button className="active">Todos os negócios</button>
-          <button>Meus negócios</button>
+          <button
+            className={filterMode === 'all' ? 'active' : ''}
+            onClick={() => setFilterMode('all')}
+          >
+            Todos os negócios ({deals.length})
+          </button>
+          <button
+            className={filterMode === 'mine' ? 'active' : ''}
+            onClick={() => setFilterMode('mine')}
+          >
+            Meus negócios ({deals.filter((d) => d.owner === pb.authStore.record?.id).length})
+          </button>
         </div>
         <span>
           <span className="live-dot" /> Sincronizado em tempo real
@@ -637,7 +968,7 @@ function Pipeline({ deals, setDeals, reload }: Data) {
       </div>
       <div className="kanban">
         {stages.map((stage) => {
-          const rows = deals.filter((d) =>
+          const rows = filteredDeals.filter((d) =>
             stage.id === 'won' ? ['won', 'lost'].includes(d.stage) : d.stage === stage.id,
           )
           return (
@@ -667,10 +998,19 @@ function Pipeline({ deals, setDeals, reload }: Data) {
                     onClick={() => setSelected(d)}
                     className={`deal-card ${drag === d.id ? 'dragging' : ''}`}
                     key={d.id}
+                    title="Clique para ver detalhes e histórico"
                   >
                     <div className="deal-top">
                       <span className={`urgency u${Math.min(3, daysAgo(d.last_contact))}`} />
-                      <MoreHorizontal />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelected(d)
+                        }}
+                        style={{ background: 'none', border: 0, color: '#777', cursor: 'pointer' }}
+                      >
+                        <MoreHorizontal />
+                      </button>
                     </div>
                     <small>{d.title}</small>
                     <h4>{d.expand?.customer?.name || 'Cliente'}</h4>
@@ -697,10 +1037,14 @@ function Pipeline({ deals, setDeals, reload }: Data) {
       {selected && (
         <DealDrawer
           deal={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null)
+            setSelectedDeal?.(null)
+          }}
           onSaved={() => {
             reload()
             setSelected(null)
+            setSelectedDeal?.(null)
           }}
         />
       )}
@@ -718,28 +1062,33 @@ function DealDrawer({
 }) {
   const { toast } = useToast()
   const [notes, setNotes] = useState(deal.notes || ''),
+    [channel, setChannel] = useState<'whatsapp' | 'call' | 'email'>('whatsapp'),
     [when, setWhen] = useState(''),
     [history, setHistory] = useState<Interaction[]>([])
+
   useEffect(() => {
     listInteractions(deal.customer)
       .then(setHistory)
       .catch(() => {})
   }, [deal.customer])
+
   async function save() {
     await updateDeal(deal.id, { notes })
-    if (when)
+    if (when) {
       await createFollowup({
         customer: deal.customer,
         deal: deal.id,
         title: 'Follow-up de negociação',
-        channel: 'whatsapp',
+        channel,
         due_at: new Date(when).toISOString(),
         status: 'pending',
         owner: pb.authStore.record?.id,
       })
+    }
     toast({ title: 'Negócio atualizado', description: 'Notas e cadência foram salvas.' })
     onSaved()
   }
+
   return (
     <div className="drawer-wrap">
       <div className="drawer-scrim" onClick={onClose} />
@@ -752,7 +1101,7 @@ function DealDrawer({
               {deal.title} · {money.format(deal.value)}
             </p>
           </div>
-          <button onClick={onClose}>
+          <button onClick={onClose} title="Fechar gaveta">
             <X />
           </button>
         </div>
@@ -805,9 +1154,27 @@ function DealDrawer({
               <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
             </label>
             <div className="cadence-options">
-              <button className="active">WhatsApp</button>
-              <button>Ligação</button>
-              <button>E-mail</button>
+              <button
+                type="button"
+                className={channel === 'whatsapp' ? 'active' : ''}
+                onClick={() => setChannel('whatsapp')}
+              >
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                className={channel === 'call' ? 'active' : ''}
+                onClick={() => setChannel('call')}
+              >
+                Ligação
+              </button>
+              <button
+                type="button"
+                className={channel === 'email' ? 'active' : ''}
+                onClick={() => setChannel('email')}
+              >
+                E-mail
+              </button>
             </div>
           </div>
         </div>
@@ -823,21 +1190,28 @@ function DealDrawer({
     </div>
   )
 }
-function WhatsApp({ conversations, reload }: Data) {
+
+function WhatsApp({ conversations, reload, openNewCustomer }: Data) {
+  const { toast } = useToast()
   const [selected, setSelected] = useState<Conversation | null>(null),
     [messages, setMessages] = useState<WhatsAppMessage[]>([]),
     [query, setQuery] = useState(''),
     [text, setText] = useState(''),
     [sending, setSending] = useState(false),
-    [ai, setAi] = useState('')
+    [ai, setAi] = useState(''),
+    [playingAudio, setPlayingAudio] = useState(false)
+
   const current = selected || conversations[0]
   const load = useCallback(() => {
     if (current) listMessages(current.id).then(setMessages)
   }, [current])
+
   useEffect(() => {
     load()
   }, [load])
+
   useRealtime<WhatsAppMessage>('whatsapp_messages', load, !!current)
+
   async function send() {
     if (!current || !text.trim()) return
     setSending(true)
@@ -857,6 +1231,7 @@ function WhatsApp({ conversations, reload }: Data) {
       setSending(false)
     }
   }
+
   async function prompt(kind: 'summary' | 'draft') {
     if (!current) return
     setAi('Consultando ScooterPro...')
@@ -876,6 +1251,7 @@ function WhatsApp({ conversations, reload }: Data) {
       setAi(e instanceof Error ? e.message : 'IA indisponível')
     }
   }
+
   return (
     <>
       <PageTitle
@@ -883,7 +1259,7 @@ function WhatsApp({ conversations, reload }: Data) {
         title="WhatsApp"
         desc="Atendimento, vendas e relacionamento em um só lugar."
         action={
-          <div className="wa-status">
+          <div className="wa-status" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <i /> Evolution API conectada
           </div>
         }
@@ -893,8 +1269,13 @@ function WhatsApp({ conversations, reload }: Data) {
           <div className="chat-list-top">
             <div>
               <h3>Conversas</h3>
-              <button>
-                <Settings2 />
+              <button
+                type="button"
+                onClick={openNewCustomer}
+                title="Adicionar novo contato no WhatsApp"
+                style={{ cursor: 'pointer' }}
+              >
+                <UserPlus size={16} />
               </button>
             </div>
             <label>
@@ -952,13 +1333,21 @@ function WhatsApp({ conversations, reload }: Data) {
                 </span>
               </div>
               <div>
-                <button onClick={() => prompt('summary')}>
+                <button onClick={() => prompt('summary')} title="Gerar resumo executivo com IA">
                   <Sparkles /> Resumir
                 </button>
-                <button onClick={() => prompt('draft')}>
+                <button onClick={() => prompt('draft')} title="Sugerir resposta comercial elegante">
                   <Bot /> Rascunhar
                 </button>
-                <button>
+                <button
+                  onClick={() => {
+                    toast({
+                      title: `Contato: ${current.name}`,
+                      description: `Telefone: ${current.phone} · Status: ${current.status}`,
+                    })
+                  }}
+                  title="Mais opções"
+                >
                   <MoreHorizontal />
                 </button>
               </div>
@@ -983,11 +1372,23 @@ function WhatsApp({ conversations, reload }: Data) {
                   )}
                   {m.type === 'audio' && (
                     <div className="audio-row">
-                      <button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlayingAudio(!playingAudio)
+                          toast({
+                            title: 'Áudio WhatsApp',
+                            description: playingAudio
+                              ? 'Pausado.'
+                              : 'Reproduzindo mensagem de voz...',
+                          })
+                        }}
+                        title="Ouvir áudio"
+                      >
                         <Headphones />
                       </button>
-                      <i />
-                      <span>0:18</span>
+                      <i style={{ opacity: playingAudio ? 1 : 0.6 }} />
+                      <span>{playingAudio ? 'Reproduzindo...' : '0:18'}</span>
                     </div>
                   )}
                   <p>{m.content}</p>
@@ -1003,10 +1404,29 @@ function WhatsApp({ conversations, reload }: Data) {
               ))}
             </div>
             <div className="composer">
-              <button>
+              <button
+                type="button"
+                onClick={() => {
+                  setText((t) => t + (t ? ' ' : '') + 'https://loja.com/catalogo-scooters.pdf')
+                  toast({
+                    title: 'Anexo adicionado',
+                    description: 'Link do catálogo inserido no campo.',
+                  })
+                }}
+                title="Inserir modelo / catálogo"
+              >
                 <Plus />
               </button>
-              <button>
+              <button
+                type="button"
+                onClick={() => {
+                  toast({
+                    title: 'Anexar arquivo',
+                    description: 'Selecione uma imagem ou proposta comercial.',
+                  })
+                }}
+                title="Anexar arquivo ou foto"
+              >
                 <Paperclip />
               </button>
               <div>
@@ -1016,18 +1436,31 @@ function WhatsApp({ conversations, reload }: Data) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') send()
                   }}
-                  placeholder="Digite uma mensagem"
+                  placeholder="Digite uma mensagem..."
                 />
-                <button>
+                <button
+                  type="button"
+                  onClick={() => prompt('draft')}
+                  title="Melhorar mensagem com ScooterPro AI"
+                >
                   <Sparkles />
                 </button>
               </div>
               {text ? (
-                <button className="send" onClick={send} disabled={sending}>
+                <button className="send" onClick={send} disabled={sending} title="Enviar mensagem">
                   {sending ? <Loader2 className="spin" /> : <Send />}
                 </button>
               ) : (
-                <button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast({
+                      title: 'Mensagem de voz',
+                      description: 'Grave um áudio para enviar ao cliente.',
+                    })
+                  }}
+                  title="Gravar áudio"
+                >
                   <Mic />
                 </button>
               )}

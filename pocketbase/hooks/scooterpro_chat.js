@@ -8,13 +8,11 @@ routerAdd(
       if (!userId) return e.unauthorizedError('Autenticação necessária')
       if (!body.message || !String(body.message).trim())
         return e.badRequestError('Mensagem obrigatória')
-      const result = $ai
-        .agent('scooter-pro')
-        .chat({
-          user_id: userId,
-          conversation_id: body.conversation_id || null,
-          message: String(body.message),
-        })
+      const result = $ai.agent('scooter-pro').chat({
+        user_id: userId,
+        conversation_id: body.conversation_id || null,
+        message: String(body.message),
+      })
       return e.json(200, result)
     } catch (err) {
       if (err instanceof SkipAiConfigError)

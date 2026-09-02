@@ -96,6 +96,32 @@ export const listInteractions = (customer: string) =>
     .getFullList({ filter: `customer = "${customer}"`, sort: '-occurred_at' })
 export const createFollowup = (data: Record<string, unknown>) =>
   pb.collection<FollowUp>('followups').create(data)
+export const updateFollowup = (id: string, data: Partial<FollowUp>) =>
+  pb.collection<FollowUp>('followups').update(id, data)
+export const deleteFollowup = (id: string) => pb.collection<FollowUp>('followups').delete(id)
+
+export const createCustomer = (data: Partial<Customer>) =>
+  pb.collection<Customer>('customers').create(data)
+export const updateCustomer = (id: string, data: Partial<Customer>) =>
+  pb.collection<Customer>('customers').update(id, data)
+export const deleteCustomer = (id: string) => pb.collection<Customer>('customers').delete(id)
+
+export const createProduct = (data: Partial<Product>) =>
+  pb.collection<Product>('products').create(data)
+export const updateProduct = (id: string, data: Partial<Product>) =>
+  pb.collection<Product>('products').update(id, data)
+export const deleteProduct = (id: string) => pb.collection<Product>('products').delete(id)
+
+export const createDeal = (data: Partial<Deal>) => pb.collection<Deal>('deals').create(data)
+export const deleteDeal = (id: string) => pb.collection<Deal>('deals').delete(id)
+
+export const createTransaction = (data: Partial<Transaction>) =>
+  pb.collection<Transaction>('transactions').create(data)
+export const deleteTransaction = (id: string) =>
+  pb.collection<Transaction>('transactions').delete(id)
+
+export const createInteraction = (data: Partial<Interaction>) =>
+  pb.collection<Interaction>('interactions').create(data)
 
 export async function sendWhatsApp(payload: {
   phone: string
